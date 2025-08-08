@@ -14,10 +14,14 @@ const config: ExpoConfig = {
   ],
 
   extra: {
-    // Do NOT commit real keys. These are injected via EAS/GitHub secrets at build time.
+    // Runtime envs (populated from EAS secrets or local .env)
     OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? '',
     OPENAI_APP_KEY: process.env.OPENAI_APP_KEY ?? '',
-    // Add any other runtime config you need here
+
+    // ✅ EAS project ID
+    eas: {
+      projectId: '3e3bbdd4-d1be-4d0f-90a4-1020a49b0e73'
+    }
   }
 };
 
