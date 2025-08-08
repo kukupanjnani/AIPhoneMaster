@@ -4,8 +4,9 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "dev": "NODE_ENV=development tsx server/index.ts",
-    "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
+    "dev": "npx expo start",
+    "build": "vite build",
+    "android:build": "npx expo prebuild && cd android && ./gradlew assembleRelease",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
     "db:push": "drizzle-kit push"
@@ -60,6 +61,7 @@
     "drizzle-orm": "^0.39.1",
     "drizzle-zod": "^0.7.0",
     "embla-carousel-react": "^8.6.0",
+    "expo": "^53.0.20",
     "express": "^4.21.2",
     "express-session": "^1.18.2",
     "framer-motion": "^11.13.1",
