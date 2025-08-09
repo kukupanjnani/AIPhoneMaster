@@ -1,11 +1,6 @@
 node_modules/
-android/.gradle/
-android/build/
-android/app/build/
-.dist/
 dist/
+build/
+local-export/
 *.env
 .env
-
-android/local.properties
-android/app/debug.keystore
