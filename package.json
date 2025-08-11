@@ -8,7 +8,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "check": "tsc",
-    "export": "expo export --platform android --output-dir ./local-export"
+    "export": "expo export --platform android --output-dir ./local-export",
+    "build": "expo build"
   },
   "dependencies": {
     "expo": "53.0.20",
