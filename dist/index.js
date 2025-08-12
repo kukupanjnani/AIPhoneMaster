@@ -13117,4 +13117,8 @@ app.use((req, res, next) => {
     log2(`Local: http://localhost:${port}`);
     log2(`Network: http://0.0.0.0:${port}`);
   });
+  const { runIDAssistAutomation } = await import("../automation/index.js");
+  runIDAssistAutomation().catch((err) =>
+    log2(`IDAssist automation failed: ${err.message}`, "automation")
+  );
 })();
