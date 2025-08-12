@@ -1,6 +1,26 @@
 node_modules/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/debug.keystore
+
+# Build outputs
 dist/
 build/
 local-export/
-*.env
+# If you use .dist/
+.dist/
+
+# Environment files
 .env
+*.env
+
+# Expo
+.expo/
+
+# Logs
+*.log
+
+# Test coverage
+coverage/
