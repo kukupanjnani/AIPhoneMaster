@@ -1,12 +1,16 @@
 {
   "compilerOptions": {
+    "noEmit": true,
+    "module": "ESNext",
     "jsx": "react-native",
     "strict": true,
+    "lib": ["esnext", "dom", "dom.iterable"],
     "moduleResolution": "node",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "allowImportingTsExtensions": true,
+    "baseUrl": "."
   },
   "include": ["**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules"]
