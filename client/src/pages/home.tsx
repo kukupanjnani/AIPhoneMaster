@@ -15,7 +15,6 @@ import { YouTubeManager } from "@/components/modules/youtube-manager";
 import { DataAcquisition } from "@/components/modules/data-acquisition";
 import { AdBudgetPlanner } from "@/components/modules/ad-budget-planner";
 import { TaskScheduler } from "@/components/modules/task-scheduler";
-import { ReplitIntegration } from "@/components/modules/replit-integration";
 import { PackageManager } from "@/components/modules/package-manager";
 import { GitIntegration } from "@/components/modules/git-integration";
 import { SecretsManager } from "@/components/modules/secrets-manager";
@@ -192,7 +191,6 @@ export default function Home() {
               <MultipleWebsitesManager />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <ReplitIntegration />
               <PackageManager />
               <GitIntegration />
               <SecretsManager />
