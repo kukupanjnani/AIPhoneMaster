@@ -3,7 +3,7 @@ import { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
   appId: 'com.moappdev.platform',
   appName: 'MO APP DEVELOPMENT',
-  webDir: 'dist/public',
+  webDir: 'server/dist/public',
   server: {
     androidScheme: 'https',
     hostname: 'localhost',
