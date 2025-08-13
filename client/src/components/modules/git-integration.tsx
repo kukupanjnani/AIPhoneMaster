@@ -52,7 +52,6 @@ export function GitIntegration() {
     ahead: 2,
     behind: 0,
     modified: [
-      "client/src/components/modules/replit-integration.tsx",
       "client/src/components/modules/package-manager.tsx",
       "server/storage.ts"
     ],
