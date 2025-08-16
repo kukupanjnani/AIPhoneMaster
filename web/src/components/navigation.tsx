@@ -192,6 +192,19 @@ export function Navigation({ activeTab, onTabChange }: NavigationProps) {
           Console
         </Button>
         <Button
+          variant={activeTab === "replit" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => onTabChange("replit")}
+          className={`mr-2 whitespace-nowrap ${
+            activeTab === "replit" 
+              ? "bg-primary/10 text-primary hover:bg-primary/20" 
+              : "hover:bg-surface-variant"
+          }`}
+        >
+          <span className="mr-2">🧑‍💻</span>
+          Replit
+        </Button>
+        <Button
           variant={activeTab === "document-vault" ? "default" : "ghost"}
           size="sm"
           onClick={() => onTabChange("document-vault")}
