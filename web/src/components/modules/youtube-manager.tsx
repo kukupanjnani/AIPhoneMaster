@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { callToolBridge } from "@/lib/callToolBridge";
+import { trackEvent } from "@/lib/analytics";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,8 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Youtube, Play, TrendingUp, Clock, Video, BarChart3 } from "lucide-react";
 
-export function YouTubeManager() {
   const [shortTitle, setShortTitle] = useState("");
+  const [llmLoading, setLlmLoading] = useState(false);
+  const [llmSuggestion, setLlmSuggestion] = useState("");
+  useEffect(() => { trackEvent("youtube-manager.viewed"); }, []);
 
   const shorts = [
     { id: 1, title: "AI Automation Tips", views: "12.5K", status: "published", engagement: "8.2%" },
@@ -78,9 +82,39 @@ export function YouTubeManager() {
                 onChange={(e) => setShortTitle(e.target.value)}
                 className="bg-dark border-surface-variant"
               />
-              <Button className="bg-red-500 hover:bg-red-600">
+              <Button
+                className="bg-red-500 hover:bg-red-600"
+                onClick={() => { trackEvent && trackEvent("youtube-manager.createShort.click"); }}
+              >
                 <Video className="w-4 h-4" />
               </Button>
+              <Button
+                variant="outline"
+                className="text-xs"
+                disabled={llmLoading}
+                onClick={async () => {
+                  setLlmLoading(true);
+                  setLlmSuggestion("");
+                  const resp = await callToolBridge({
+                    tool: "llmComplete",
+                    input: {
+                      provider: "openai",
+                      model: "gpt-4o",
+                      prompt: `Suggest a viral YouTube Shorts title for: ${shortTitle}`
+                    }
+                  });
+                  setLlmLoading(false);
+                  if (resp && resp.data && resp.data.completion) setLlmSuggestion(resp.data.completion);
+                  trackEvent && trackEvent("llm.youtube_short_title_suggestion");
+                }}
+              >{llmLoading ? "LLM..." : "LLM Suggest Title"}</Button>
+            </div>
+            {llmSuggestion && (
+              <div className="mt-2 p-2 bg-surface-variant border rounded text-xs">
+                <div className="font-semibold mb-1">LLM Suggestion:</div>
+                <div>{llmSuggestion}</div>
+              </div>
+            )}
             </div>
             
             <div className="space-y-2">
@@ -170,6 +204,5 @@ export function YouTubeManager() {
         </Tabs>
       </CardContent>
     </Card>
-    </div>
   );
 }

@@ -19,7 +19,8 @@ import {
   User,
   FileText
 } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { callToolBridge } from "@/lib/callToolBridge";
+import { trackEvent } from "@/lib/analytics";
 import { useToast } from "@/hooks/use-toast";
 
 interface GitCommit {
@@ -42,6 +43,7 @@ interface GitBranchInfo {
 export function GitIntegration() {
   const [activeTab, setActiveTab] = useState("status");
   const [commitMessage, setCommitMessage] = useState("");
+  const [llmLoading, setLlmLoading] = useState(false);
   const [newBranchName, setNewBranchName] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -117,9 +119,13 @@ export function GitIntegration() {
 
   const commitChanges = useMutation({
     mutationFn: async (message: string) => {
-      // Would run actual git commit command
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      return { success: true, hash: Math.random().toString(36).substr(2, 7) };
+      return await callToolBridge({
+        tool: "git-integration.commit",
+        input: { message },
+        onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to commit changes.", variant: "destructive" }),
+        onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+        onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
+      });
     },
     onSuccess: (data) => {
       toast({
@@ -132,9 +138,13 @@ export function GitIntegration() {
 
   const pushChanges = useMutation({
     mutationFn: async () => {
-      // Would run git push command
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      return { success: true, pushed: gitStatus.ahead };
+      return await callToolBridge({
+        tool: "git-integration.push",
+        input: {},
+        onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to push changes.", variant: "destructive" }),
+        onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+        onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
+      });
     },
     onSuccess: (data) => {
       toast({
@@ -146,9 +156,13 @@ export function GitIntegration() {
 
   const pullChanges = useMutation({
     mutationFn: async () => {
-      // Would run git pull command
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      return { success: true, pulled: 0 };
+      return await callToolBridge({
+        tool: "git-integration.pull",
+        input: {},
+        onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to pull changes.", variant: "destructive" }),
+        onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+        onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
+      });
     },
     onSuccess: (data) => {
       toast({
@@ -160,9 +174,13 @@ export function GitIntegration() {
 
   const createBranch = useMutation({
     mutationFn: async (branchName: string) => {
-      // Would run git checkout -b command
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return { success: true, branch: branchName };
+      return await callToolBridge({
+        tool: "git-integration.createBranch",
+        input: { branchName },
+        onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to create branch.", variant: "destructive" }),
+        onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+        onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
+      });
     },
     onSuccess: (data) => {
       toast({
@@ -317,18 +335,42 @@ export function GitIntegration() {
             <div className="space-y-3">
               <div>
                 <label className="text-sm font-medium mb-2 block">Commit Message</label>
-                <Textarea
-                  placeholder="Describe your changes..."
-                  value={commitMessage}
-                  onChange={(e) => setCommitMessage(e.target.value)}
-                  className="bg-dark border-surface-variant resize-none"
-                  rows={3}
-                />
+                <div className="flex gap-2">
+                  <Textarea
+                    placeholder="Describe your changes..."
+                    value={commitMessage}
+                    onChange={(e) => setCommitMessage(e.target.value)}
+                    className="bg-dark border-surface-variant resize-none"
+                    rows={3}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={llmLoading}
+                    onClick={async () => {
+                      setLlmLoading(true);
+                      const resp = await callToolBridge({
+                        tool: "llmComplete",
+                        input: {
+                          provider: "openai",
+                          model: "gpt-4o",
+                          prompt: `Write a concise git commit message for these changes: ${gitStatus.modified.join(", ")}`
+                        }
+                      });
+                      setLlmLoading(false);
+                      if (resp && resp.data && resp.data.completion) setCommitMessage(resp.data.completion.trim());
+                      trackEvent("llm.suggest_commit_message");
+                    }}
+                  >{llmLoading ? "Generating..." : "Suggest"}</Button>
+                </div>
               </div>
               
               <div className="flex space-x-2">
                 <Button
-                  onClick={() => commitChanges.mutate(commitMessage)}
+                  onClick={() => {
+                    trackEvent("git-integration.commit", { message: commitMessage });
+                    commitChanges.mutate(commitMessage);
+                  }}
                   disabled={!commitMessage.trim() || commitChanges.isPending}
                   className="flex-1 bg-green-500 hover:bg-green-600"
                 >

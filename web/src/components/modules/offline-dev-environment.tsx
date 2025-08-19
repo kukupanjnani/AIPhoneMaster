@@ -36,7 +36,8 @@ import {
   Upload,
   RefreshCw
 } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { callToolBridge } from "@/lib/callToolBridge";
+import { trackEvent } from "@/lib/analytics";
 import { useToast } from "@/hooks/use-toast";
 
 interface VPSInstance {
@@ -80,6 +81,8 @@ export function OfflineDevEnvironment() {
   const [torEnabled, setTorEnabled] = useState(false);
   const [vpnEnabled, setVpnEnabled] = useState(false);
   const [anonymousMode, setAnonymousMode] = useState(false);
+  const [llmLoading, setLlmLoading] = useState(false);
+  const [llmSuggestion, setLlmSuggestion] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -211,8 +214,13 @@ export function OfflineDevEnvironment() {
 
   const deployVPS = useMutation({
     mutationFn: async (vpsConfig: any) => {
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      return { success: true, instanceId: Math.random().toString(36).substr(2, 9) };
+      return await callToolBridge({
+        tool: "offline-dev-environment.deployVPS",
+        input: vpsConfig,
+        onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to deploy VPS.", variant: "destructive" }),
+        onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+        onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
+      });
     },
     onSuccess: () => {
       toast({
@@ -224,8 +232,13 @@ export function OfflineDevEnvironment() {
 
   const toggleTor = useMutation({
     mutationFn: async (enabled: boolean) => {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      return { success: true, torEnabled: enabled };
+      return await callToolBridge({
+        tool: "offline-dev-environment.toggleTor",
+        input: { enabled },
+        onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to toggle Tor.", variant: "destructive" }),
+        onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+        onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
+      });
     },
     onSuccess: (data) => {
       setTorEnabled(data.torEnabled);
@@ -240,8 +253,13 @@ export function OfflineDevEnvironment() {
 
   const installOfflineStack = useMutation({
     mutationFn: async () => {
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      return { success: true, servicesInstalled: 8 };
+      return await callToolBridge({
+        tool: "offline-dev-environment.installStack",
+        input: {},
+        onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to install offline stack.", variant: "destructive" }),
+        onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+        onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
+      });
     },
     onSuccess: (data) => {
       toast({
@@ -557,26 +575,36 @@ export function OfflineDevEnvironment() {
             <div className="bg-surface-variant rounded-lg p-4">
               <h4 className="text-sm font-medium mb-3">One-Click Setup Options</h4>
               <div className="space-y-3">
-                <Button 
-                  className="w-full justify-start bg-blue-500 hover:bg-blue-600"
-                  onClick={() => installOfflineStack.mutate()}
-                  disabled={installOfflineStack.isPending}
-                >
-                  <Container className="w-4 h-4 mr-2" />
-                  {installOfflineStack.isPending ? "Installing..." : "Install Full Docker Stack"}
-                </Button>
-                <Button className="w-full justify-start" variant="outline">
-                  <Cloud className="w-4 h-4 mr-2" />
-                  Deploy to Personal VPS
-                </Button>
-                <Button className="w-full justify-start" variant="outline">
-                  <Shield className="w-4 h-4 mr-2" />
-                  Setup Anonymous Environment
-                </Button>
-                <Button className="w-full justify-start" variant="outline">
-                  <Upload className="w-4 h-4 mr-2" />
-                  Import Replit Project
-                </Button>
+                  <div className="flex gap-2">
+                    <Button 
+                      className="w-full justify-start bg-blue-500 hover:bg-blue-600"
+                      onClick={() => { trackEvent("offline-dev-environment.installOfflineStack.click"); installOfflineStack.mutate(); }}
+                      disabled={installOfflineStack.isPending}
+                    >
+                      <Container className="w-4 h-4 mr-2" />
+                      {installOfflineStack.isPending ? "Installing..." : "Install Full Docker Stack"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={llmLoading}
+                      onClick={async () => {
+                        setLlmLoading(true);
+                        setLlmSuggestion("");
+                        const resp = await callToolBridge({
+                          tool: "llmComplete",
+                          input: {
+                            provider: "openai",
+                            model: "gpt-4o",
+                            prompt: `Suggest the best offline dev stack for privacy and productivity. Services: ${offlineServices.map(s => s.name).join(", ")}`
+                          }
+                        });
+                        setLlmLoading(false);
+                        if (resp && resp.data && resp.data.completion) setLlmSuggestion(resp.data.completion);
+                        trackEvent("llm.offline_stack_suggestion");
+                      }}
+                    >{llmLoading ? "Suggesting..." : "LLM Suggest Stack"}</Button>
+                  </div>
               </div>
             </div>
 

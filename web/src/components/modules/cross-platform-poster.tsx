@@ -18,6 +18,8 @@ import {
   Hash, Target, BarChart3, Upload, Wand2, Type, PlayCircle, Mic, Volume2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { callToolBridge } from "@/lib/callToolBridge";
+import { trackEvent } from "@/lib/analytics";
 
 interface CrossPlatformPost {
   id: number;
@@ -79,17 +81,23 @@ export function CrossPlatformPoster() {
     queryKey: ['/api/platform-connections']
   });
 
+  // LLM suggestion state
+  const [llmSuggestion, setLlmSuggestion] = useState("");
+  const [llmLoading, setLlmLoading] = useState(false);
+
   // Create post mutation
   const createPostMutation = useMutation({
     mutationFn: async (postData: typeof postForm) => {
-      const response = await fetch('/api/cross-platform-posts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(postData)
+      return await callToolBridge({
+        tool: "cross-platform-poster.createPost",
+        input: postData,
+        onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to create posts.", variant: "destructive" }),
+        onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+        onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
       });
-      return response.json();
     },
     onSuccess: () => {
+      trackEvent("cross-platform-poster.createPost");
       queryClient.invalidateQueries({ queryKey: ['/api/cross-platform-posts'] });
       toast({ title: "Post created successfully", description: "Content prepared for cross-platform posting" });
       setPostForm({
@@ -113,6 +121,7 @@ export function CrossPlatformPoster() {
       });
     },
     onError: (error: any) => {
+      trackEvent("cross-platform-poster.createPost.error", { error: error.message });
       toast({ title: "Failed to create post", description: error.message, variant: "destructive" });
     }
   });
@@ -120,17 +129,20 @@ export function CrossPlatformPoster() {
   // Format content mutation
   const formatContentMutation = useMutation({
     mutationFn: async (data: { content: string; platforms: string[] }) => {
-      const response = await fetch('/api/cross-platform-posts/format', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+      return await callToolBridge({
+        tool: "cross-platform-poster.formatContent",
+        input: data,
+        onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to format content.", variant: "destructive" }),
+        onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+        onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
       });
-      return response.json();
     },
     onSuccess: (data) => {
+      trackEvent("cross-platform-poster.formatContent");
       toast({ title: "Content formatted", description: "Content optimized for selected platforms" });
     },
     onError: (error: any) => {
+      trackEvent("cross-platform-poster.formatContent.error", { error: error.message });
       toast({ title: "Formatting failed", description: error.message, variant: "destructive" });
     }
   });
@@ -138,17 +150,21 @@ export function CrossPlatformPoster() {
   // Auto-post mutation
   const autoPostMutation = useMutation({
     mutationFn: async (postId: number) => {
-      const response = await fetch(`/api/cross-platform-posts/${postId}/post`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+      return await callToolBridge({
+        tool: "cross-platform-poster.autoPost",
+        input: { postId },
+        onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to auto-post.", variant: "destructive" }),
+        onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+        onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
       });
-      return response.json();
     },
     onSuccess: () => {
+      trackEvent("cross-platform-poster.autoPost");
       queryClient.invalidateQueries({ queryKey: ['/api/cross-platform-posts'] });
       toast({ title: "Auto-posting initiated", description: "Content is being posted across platforms" });
     },
     onError: (error: any) => {
+      trackEvent("cross-platform-poster.autoPost.error", { error: error.message });
       toast({ title: "Auto-posting failed", description: error.message, variant: "destructive" });
     }
   });
@@ -281,25 +297,50 @@ export function CrossPlatformPoster() {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <Label htmlFor="content">Content</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleFormatContent}
-                      disabled={formatContentMutation.isPending}
-                    >
-                      {formatContentMutation.isPending ? (
-                        <>
-                          <Wand2 className="w-3 h-3 mr-1 animate-spin" />
-                          Formatting...
-                        </>
-                      ) : (
-                        <>
-                          <Wand2 className="w-3 h-3 mr-1" />
-                          Smart Format
-                        </>
-                      )}
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleFormatContent}
+                        disabled={formatContentMutation.isPending}
+                      >
+                        {formatContentMutation.isPending ? (
+                          <>
+                            <Wand2 className="w-3 h-3 mr-1 animate-spin" />
+                            Formatting...
+                          </>
+                        ) : (
+                          <>
+                            <Wand2 className="w-3 h-3 mr-1" />
+                            Smart Format
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={llmLoading}
+                        onClick={async () => {
+                          setLlmLoading(true);
+                          setLlmSuggestion("");
+                          const resp = await callToolBridge({
+                            tool: "llmComplete",
+                            input: {
+                              provider: "openai",
+                              model: "gpt-4o",
+                              prompt: `Write a cross-platform social post for: ${postForm.title || "Untitled"}. Details: ${postForm.originalContent}`
+                            }
+                          });
+                          setLlmLoading(false);
+                          if (resp && resp.data && resp.data.completion) setLlmSuggestion(resp.data.completion);
+                          trackEvent("llm.suggest_content", { title: postForm.title });
+                        }}
+                      >
+                        {llmLoading ? "Generating..." : "Suggest with LLM"}
+                      </Button>
+                    </div>
                   </div>
                   <Textarea
                     id="content"
@@ -308,6 +349,13 @@ export function CrossPlatformPoster() {
                     onChange={(e) => setPostForm(prev => ({ ...prev, originalContent: e.target.value }))}
                     rows={6}
                   />
+                  {llmSuggestion && (
+                    <div className="mt-2 p-2 bg-surface-variant border rounded text-xs">
+                      <div className="font-semibold mb-1">LLM Suggestion:</div>
+                      <div>{llmSuggestion}</div>
+                      <Button size="xs" className="mt-1" onClick={() => setPostForm(prev => ({ ...prev, originalContent: llmSuggestion }))}>Use</Button>
+                    </div>
+                  )}
                 </div>
 
                 <div>

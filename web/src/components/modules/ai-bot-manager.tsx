@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -51,7 +51,8 @@ import {
   Server,
   CloudLightning
 } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { callToolBridge } from "@/lib/callToolBridge";
+import { trackEvent } from "@/lib/analytics";
 import { useToast } from "@/hooks/use-toast";
 
 interface AIBot {
@@ -60,7 +61,7 @@ interface AIBot {
   description: string;
   type: "assistant" | "automation" | "chatbot" | "api";
   status: "active" | "inactive" | "training" | "error";
-  model: string;
+  model: string; // supports gpt-5-mini-preview
   capabilities: string[];
   personality: string;
   instructions: string;
@@ -94,80 +95,32 @@ export function AIBotManager() {
     name: "",
     description: "",
     type: "assistant",
-    model: "claude-4",
+    model: "gpt-5-mini-preview",
     personality: "professional",
     instructions: "",
     capabilities: [] as string[]
   });
+  const [llmSuggestion, setLlmSuggestion] = useState("");
+  const [llmLoading, setLlmLoading] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Mock bot data
-  const mockBots: AIBot[] = [
-    {
-      id: "1",
-      name: "MO Development Assistant",
-      description: "AI coding assistant specialized in mobile app development",
-      type: "assistant",
-      status: "active",
-      model: "claude-4",
-      capabilities: ["coding", "debugging", "architecture", "deployment"],
-      personality: "professional",
-      instructions: "Expert mobile developer with focus on React Native, Flutter, and cross-platform solutions",
-      knowledge_base: ["react-native-docs", "flutter-docs", "mobile-best-practices"],
-      integrations: ["github", "replit", "figma"],
-      usage_stats: {
-        interactions: 1250,
-        uptime: "99.8%",
-        success_rate: 96.5,
-        last_active: "2 minutes ago"
-      },
-      created_at: "2024-01-15",
-      updated_at: "2024-01-23"
-    },
-    {
-      id: "2",
-      name: "Social Media Manager Bot",
-      description: "Automated social media content creation and scheduling",
-      type: "automation",
-      status: "active",
-      model: "gpt-4o",
-      capabilities: ["content-creation", "scheduling", "analytics", "engagement"],
-      personality: "creative",
-      instructions: "Create engaging social media content optimized for different platforms with trending hashtags",
-      knowledge_base: ["social-media-trends", "content-templates", "hashtag-database"],
-      integrations: ["instagram", "facebook", "twitter", "linkedin"],
-      usage_stats: {
-        interactions: 850,
-        uptime: "98.2%",
-        success_rate: 94.1,
-        last_active: "5 minutes ago"
-      },
-      created_at: "2024-01-10",
-      updated_at: "2024-01-22"
-    },
-    {
-      id: "3",
-      name: "Customer Support Chatbot",
-      description: "24/7 customer support with intelligent query resolution",
-      type: "chatbot",
-      status: "training",
-      model: "claude-3.5",
-      capabilities: ["support", "faq", "escalation", "multilingual"],
-      personality: "helpful",
-      instructions: "Provide friendly, accurate customer support with emphasis on problem resolution",
-      knowledge_base: ["support-docs", "faq-database", "product-manuals"],
-      integrations: ["whatsapp", "telegram", "website-chat"],
-      usage_stats: {
-        interactions: 320,
-        uptime: "85.5%",
-        success_rate: 88.7,
-        last_active: "1 hour ago"
-      },
-      created_at: "2024-01-20",
-      updated_at: "2024-01-23"
-    }
-  ];
+  // Bots data from ToolBridge
+  const [bots, setBots] = useState<AIBot[]>([]);
+
+  // Fetch bots from ToolBridge on mount
+  React.useEffect(() => {
+    callToolBridge({
+      tool: "ai-bot-manager.list",
+      input: {},
+      onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to access bots.", variant: "destructive" }),
+      onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+      onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
+    }).then((data) => {
+      if (data && data.bots) setBots(data.bots);
+    });
+    trackEvent("ai-bot-manager.viewed");
+  }, []);
 
   const botTemplates: BotTemplate[] = [
     {
@@ -210,15 +163,15 @@ export function AIBotManager() {
 
   const createBot = useMutation({
     mutationFn: async (botData: any) => {
-      // Mock bot creation
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      return {
-        success: true,
-        botId: Math.random().toString(36).substr(2, 9),
-        message: "Bot created successfully"
-      };
+      return await callToolBridge({
+        tool: "ai-bot-manager.create",
+        input: botData,
+        onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to create bots.", variant: "destructive" }),
+        onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+        onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
+      });
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast({
         title: "Bot Created",
         description: "Your AI bot has been created and is initializing.",
@@ -233,6 +186,7 @@ export function AIBotManager() {
         instructions: "",
         capabilities: []
       });
+      if (data && data.bot) setBots((prev) => [...prev, data.bot]);
     },
     onError: () => {
       toast({
@@ -245,14 +199,20 @@ export function AIBotManager() {
 
   const toggleBotStatus = useMutation({
     mutationFn: async (data: { botId: string; action: string }) => {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return { success: true, action: data.action };
+      return await callToolBridge({
+        tool: "ai-bot-manager.toggleStatus",
+        input: data,
+        onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to update bot status.", variant: "destructive" }),
+        onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+        onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
+      });
     },
     onSuccess: (data) => {
       toast({
         title: `Bot ${data.action}`,
         description: `Bot has been ${data.action}d successfully.`,
       });
+      // Optionally update bots state here
     }
   });
 
@@ -301,7 +261,7 @@ export function AIBotManager() {
           </div>
           <div className="flex items-center space-x-2">
             <Badge className="bg-blue-500/10 text-blue-400">
-              {mockBots.length} Active Bots
+              {bots.length} Active Bots
             </Badge>
             <Button
               size="sm"
@@ -400,10 +360,11 @@ export function AIBotManager() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="claude-4">Claude 4 Sonnet</SelectItem>
-                          <SelectItem value="claude-3.5">Claude 3.5 Sonnet</SelectItem>
+                          <SelectItem value="gpt-5-mini-preview">GPT-5 mini (Preview)</SelectItem>
                           <SelectItem value="gpt-4o">GPT-4o</SelectItem>
                           <SelectItem value="gpt-4">GPT-4</SelectItem>
+                          <SelectItem value="claude-4">Claude 4 Sonnet</SelectItem>
+                          <SelectItem value="claude-3.5">Claude 3.5 Sonnet</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -433,6 +394,35 @@ export function AIBotManager() {
                       className="bg-dark border-surface-variant"
                       rows={4}
                     />
+                    <Button
+                      size="sm"
+                      className="mt-2"
+                      disabled={llmLoading}
+                      onClick={async () => {
+                        setLlmLoading(true);
+                        setLlmSuggestion("");
+                        const resp = await callToolBridge({
+                          tool: "llmComplete",
+                          input: {
+                            provider: "openai",
+                            model: newBotData.model,
+                            prompt: `Suggest detailed instructions for an AI bot with personality '${newBotData.personality}' and type '${newBotData.type}'. Description: ${newBotData.description}`
+                          }
+                        });
+                        setLlmLoading(false);
+                        if (resp && resp.data && resp.data.completion) setLlmSuggestion(resp.data.completion);
+                        trackEvent("llm.suggest_instructions", { model: newBotData.model, type: newBotData.type });
+                      }}
+                    >
+                      {llmLoading ? "Generating..." : "Suggest with LLM"}
+                    </Button>
+                    {llmSuggestion && (
+                      <div className="mt-2 p-2 bg-surface-variant border rounded text-xs">
+                        <div className="font-semibold mb-1">LLM Suggestion:</div>
+                        <div>{llmSuggestion}</div>
+                        <Button size="xs" className="mt-1" onClick={() => setNewBotData({...newBotData, instructions: llmSuggestion})}>Use</Button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center space-x-2">
@@ -466,7 +456,7 @@ export function AIBotManager() {
             )}
 
             <div className="space-y-3">
-              {mockBots.map((bot) => (
+              {bots.map((bot) => (
                 <Card key={bot.id} className="bg-surface-variant hover:bg-surface-variant/80 transition-colors">
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between">
@@ -636,7 +626,7 @@ export function AIBotManager() {
                 <CardTitle className="text-sm">Bot Performance Metrics</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {mockBots.map((bot) => (
+                {bots.map((bot) => (
                   <div key={bot.id} className="bg-dark rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium">{bot.name}</span>
@@ -678,9 +668,10 @@ export function AIBotManager() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="gpt-5-mini-preview">GPT-5 mini (Preview)</SelectItem>
+                        <SelectItem value="gpt-4o">GPT-4o</SelectItem>
                         <SelectItem value="claude-4">Claude 4 Sonnet</SelectItem>
                         <SelectItem value="claude-3.5">Claude 3.5 Sonnet</SelectItem>
-                        <SelectItem value="gpt-4o">GPT-4o</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

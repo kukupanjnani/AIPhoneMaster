@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,8 @@ import {
   Hash
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { callToolBridge } from "@/lib/callToolBridge";
+import { trackEvent } from "@/lib/analytics";
 import { useToast } from "@/hooks/use-toast";
 
 interface ContentRecommendation {
@@ -73,8 +75,12 @@ export function ContentRecommendationEngine() {
   const [activeTab, setActiveTab] = useState("recommendations");
   const [filterType, setFilterType] = useState<string>("all");
   const [filterModule, setFilterModule] = useState<string>("all");
+  const [llmLoading, setLlmLoading] = useState(false);
+  const [llmSuggestion, setLlmSuggestion] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  // Track view event
+  useEffect(() => { trackEvent("content-recommendation-engine.viewed"); }, []);
 
   // Mock data for recommendations
   const recommendations: ContentRecommendation[] = [
@@ -327,13 +333,34 @@ export function ContentRecommendationEngine() {
             <Badge className="bg-blue-500/10 text-blue-400">AI-Powered</Badge>
             <Button
               size="sm"
-              onClick={() => generateNewRecommendations.mutate()}
+              onClick={() => { trackEvent("content-recommendation-engine.analyze.click"); generateNewRecommendations.mutate(); }}
               disabled={generateNewRecommendations.isPending}
               className="bg-blue-500 hover:bg-blue-600"
             >
               <RefreshCw className={`w-3 h-3 mr-1 ${generateNewRecommendations.isPending ? 'animate-spin' : ''}`} />
               Analyze
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs"
+              disabled={llmLoading}
+              onClick={async () => {
+                setLlmLoading(true);
+                setLlmSuggestion("");
+                const resp = await callToolBridge({
+                  tool: "llmComplete",
+                  input: {
+                    provider: "openai",
+                    model: "gpt-4o",
+                    prompt: `Suggest new content recommendations for all modules and platforms. Current filters: type=${filterType}, module=${filterModule}`
+                  }
+                });
+                setLlmLoading(false);
+                if (resp && resp.data && resp.data.completion) setLlmSuggestion(resp.data.completion);
+                trackEvent("llm.content_recommendation_suggestion");
+              }}
+            >{llmLoading ? "LLM Suggesting..." : "LLM Suggest"}</Button>
           </div>
         </CardTitle>
         <div className="card-description">
@@ -341,6 +368,12 @@ export function ContentRecommendationEngine() {
           performance predictions, auto-optimization, and personalized content strategies.
         </div>
         <div className="feature-list">
+          {llmSuggestion && (
+            <div className="mt-2 p-2 bg-surface-variant border rounded text-xs">
+              <div className="font-semibold mb-1">LLM Suggestion:</div>
+              <div>{llmSuggestion}</div>
+            </div>
+          )}
           <div className="feature-tag">AI Recommendations</div>
           <div className="feature-tag">Trend Analysis</div>
           <div className="feature-tag">Competitor Insights</div>

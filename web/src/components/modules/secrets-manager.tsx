@@ -1,4 +1,5 @@
-import { useState } from "react";
+import React, { useState } from "react";
+import { callToolBridge } from "@/lib/callToolBridge";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,51 +35,33 @@ export function SecretsManager() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Mock secrets data - would integrate with actual Replit Secrets API
-  const secrets: Secret[] = [
-    {
-      key: "OPENAI_API_KEY",
-      value: "sk-proj-***********************************",
-      description: "OpenAI API key for AI-powered features",
-      lastUsed: "2 hours ago",
-      createdAt: "2025-01-15"
-    },
-    {
-      key: "DATABASE_URL",
-      value: "postgresql://***:***@***:5432/***",
-      description: "PostgreSQL database connection string",
-      lastUsed: "Active",
-      createdAt: "2025-01-20"
-    },
-    {
-      key: "INSTAGRAM_ACCESS_TOKEN",
-      value: "IGQVJ***********************************",
-      description: "Instagram Graph API access token",
-      lastUsed: "1 day ago",
-      createdAt: "2025-01-18"
-    },
-    {
-      key: "FACEBOOK_APP_SECRET",
-      value: "a1b2c3***************************",
-      description: "Facebook app secret for social automation",
-      lastUsed: "3 days ago", 
-      createdAt: "2025-01-16"
-    },
-    {
-      key: "YOUTUBE_API_KEY",
-      value: "AIzaSy***************************",
-      description: "YouTube Data API key for channel management",
-      createdAt: "2025-01-14"
-    }
-  ];
+  // Secrets data from ToolBridge
+  const [secrets, setSecrets] = useState<Secret[]>([]);
+
+  // Fetch secrets from ToolBridge on mount
+  React.useEffect(() => {
+    callToolBridge({
+      tool: "secrets-manager.list",
+      input: {},
+      onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to access secrets.", variant: "destructive" }),
+      onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+      onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
+    }).then((data) => {
+      if (data && data.secrets) setSecrets(data.secrets);
+    });
+  }, []);
 
   const addSecret = useMutation({
     mutationFn: async (secretData: { key: string; value: string; description: string }) => {
-      // Would integrate with Replit Secrets API
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return { success: true, secret: secretData };
+      return await callToolBridge({
+        tool: "secrets-manager.add",
+        input: secretData,
+        onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to add secrets.", variant: "destructive" }),
+        onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+        onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
+      });
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast({
         title: "Secret Added",
         description: "New secret has been securely stored.",
@@ -86,20 +69,26 @@ export function SecretsManager() {
       setNewSecretKey("");
       setNewSecretValue("");
       setNewSecretDescription("");
+      if (data && data.secret) setSecrets((prev) => [...prev, data.secret]);
     },
   });
 
   const deleteSecret = useMutation({
     mutationFn: async (key: string) => {
-      // Would call Replit Secrets API to delete
-      await new Promise(resolve => setTimeout(resolve, 500));
-      return { success: true, key };
+      return await callToolBridge({
+        tool: "secrets-manager.delete",
+        input: { key },
+        onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to delete secrets.", variant: "destructive" }),
+        onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+        onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
+      });
     },
     onSuccess: (data) => {
       toast({
         title: "Secret Deleted",
         description: `${data.key} has been removed from secrets.`,
       });
+      if (data && data.key) setSecrets((prev) => prev.filter((s) => s.key !== data.key));
     },
   });
 

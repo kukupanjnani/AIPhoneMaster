@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,8 @@ import {
   CheckCircle,
   Clock
 } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { callToolBridge } from "@/lib/callToolBridge";
+import { trackEvent } from "@/lib/analytics";
 import { useToast } from "@/hooks/use-toast";
 
 interface Deployment {
@@ -55,61 +56,55 @@ export function DeploymentManager() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Mock deployment data - would integrate with Replit Deployments API
-  const deployments: Deployment[] = [
-    {
-      id: "1",
-      name: "mo-app-production",
-      url: "https://mo-app-development.replit.app",
-      domain: "mo-development.com",
-      status: "active",
-      environment: "production", 
-      lastDeploy: "2 hours ago",
-      builds: 47,
-      uptime: "99.9%"
-    },
-    {
-      id: "2",
-      name: "mo-app-staging",
-      url: "https://mo-app-staging.replit.app", 
-      status: "active",
-      environment: "staging",
-      lastDeploy: "1 day ago",
-      builds: 23,
-      uptime: "99.5%"
-    },
-    {
-      id: "3",
-      name: "mo-app-dev",
-      url: "https://mo-app-dev.replit.app",
-      status: "stopped",
-      environment: "development",
-      lastDeploy: "3 days ago", 
-      builds: 12,
-      uptime: "95.2%"
-    }
-  ];
+  // Deployment data from ToolBridge
+  const [deployments, setDeployments] = useState<Deployment[]>([]);
+
+  // Fetch deployments from ToolBridge on mount
+  React.useEffect(() => {
+    callToolBridge({
+      tool: "deployment-manager.list",
+      input: {},
+      onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to access deployments.", variant: "destructive" }),
+      onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+      onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
+    }).then((data) => {
+      if (data && data.deployments) setDeployments(data.deployments);
+    });
+    trackEvent("deployment-manager.viewed");
+  }, []);
+
 
   const createDeployment = useMutation({
     mutationFn: async (deploymentData: any) => {
-      // Would integrate with Replit Deployments API
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      return { success: true, deployment: deploymentData };
+      return await callToolBridge({
+        tool: "deployment-manager.create",
+        input: deploymentData,
+        onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to create deployments.", variant: "destructive" }),
+        onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+        onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
+      });
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast({
         title: "Deployment Created",
         description: "New deployment is being initialized.",
       });
       setNewDeploymentName("");
+      // Optionally refresh deployments
+      if (data && data.deployment) setDeployments((prev) => [...prev, data.deployment]);
     },
   });
 
+
   const deployProject = useMutation({
     mutationFn: async (deploymentId: string) => {
-      // Would trigger actual deployment
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      return { success: true, deploymentId };
+      return await callToolBridge({
+        tool: "deployment-manager.deploy",
+        input: { deploymentId },
+        onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to deploy.", variant: "destructive" }),
+        onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+        onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
+      });
     },
     onSuccess: () => {
       toast({
@@ -119,11 +114,16 @@ export function DeploymentManager() {
     },
   });
 
+
   const stopDeployment = useMutation({
     mutationFn: async (deploymentId: string) => {
-      // Would stop deployment
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return { success: true, deploymentId };
+      return await callToolBridge({
+        tool: "deployment-manager.stop",
+        input: { deploymentId },
+        onNeedAuth: () => toast({ title: "Auth Required", description: "Please authenticate to stop deployments.", variant: "destructive" }),
+        onRateLimited: (s) => toast({ title: "Rate Limited", description: `Try again in ${s} seconds.`, variant: "destructive" }),
+        onPolicyError: (e) => toast({ title: "Policy Error", description: e?.message || "Access denied.", variant: "destructive" })
+      });
     },
     onSuccess: () => {
       toast({
@@ -352,19 +352,55 @@ export function DeploymentManager() {
                 <div className="space-y-3">
                   <div>
                     <label className="text-xs font-medium mb-1 block">Build Command</label>
-                    <Input
-                      value={config.buildCommand}
-                      onChange={(e) => setConfig(prev => ({ ...prev, buildCommand: e.target.value }))}
-                      className="bg-dark border-surface-variant"
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        value={config.buildCommand}
+                        onChange={(e) => setConfig(prev => ({ ...prev, buildCommand: e.target.value }))}
+                        className="bg-dark border-surface-variant"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          const resp = await callToolBridge({
+                            tool: "llmComplete",
+                            input: {
+                              provider: "openai",
+                              model: "gpt-4o",
+                              prompt: `Suggest a build command for a ${config.environment} deployment.`
+                            }
+                          });
+                          if (resp && resp.data && resp.data.completion) setConfig(prev => ({ ...prev, buildCommand: resp.data.completion.trim() }));
+                          trackEvent("llm.suggest_build_command", { env: config.environment });
+                        }}
+                      >Suggest</Button>
+                    </div>
                   </div>
                   <div>
                     <label className="text-xs font-medium mb-1 block">Start Command</label>
-                    <Input
-                      value={config.startCommand}
-                      onChange={(e) => setConfig(prev => ({ ...prev, startCommand: e.target.value }))}
-                      className="bg-dark border-surface-variant"
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        value={config.startCommand}
+                        onChange={(e) => setConfig(prev => ({ ...prev, startCommand: e.target.value }))}
+                        className="bg-dark border-surface-variant"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          const resp = await callToolBridge({
+                            tool: "llmComplete",
+                            input: {
+                              provider: "openai",
+                              model: "gpt-4o",
+                              prompt: `Suggest a start command for a ${config.environment} deployment.`
+                            }
+                          });
+                          if (resp && resp.data && resp.data.completion) setConfig(prev => ({ ...prev, startCommand: resp.data.completion.trim() }));
+                          trackEvent("llm.suggest_start_command", { env: config.environment });
+                        }}
+                      >Suggest</Button>
+                    </div>
                   </div>
                   <div>
                     <label className="text-xs font-medium mb-1 block">Custom Domain</label>
