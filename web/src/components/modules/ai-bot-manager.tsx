@@ -420,7 +420,7 @@ export function AIBotManager() {
                       <div className="mt-2 p-2 bg-surface-variant border rounded text-xs">
                         <div className="font-semibold mb-1">LLM Suggestion:</div>
                         <div>{llmSuggestion}</div>
-                        <Button size="xs" className="mt-1" onClick={() => setNewBotData({...newBotData, instructions: llmSuggestion})}>Use</Button>
+                        <Button size="sm" className="mt-1" onClick={() => setNewBotData({...newBotData, instructions: llmSuggestion})}>Use</Button>
                       </div>
                     )}
                   </div>

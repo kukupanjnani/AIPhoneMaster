@@ -1,4 +1,7 @@
 import React, { useState, useRef } from "react";
+import { useEffect } from "react";
+import { callToolBridge } from "@/lib/callToolBridge";
+import { trackEvent } from "@/lib/analytics";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +61,9 @@ interface ApkFile {
 }
 
 export default function ApkManager() {
+  const [llmLoading, setLlmLoading] = useState(false);
+  const [llmSuggestion, setLlmSuggestion] = useState("");
+  useEffect(() => { trackEvent && trackEvent("apk-manager.viewed"); }, []);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [selectedApk, setSelectedApk] = useState<ApkFile | null>(null);
@@ -114,6 +120,7 @@ export default function ApkManager() {
   });
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  trackEvent && trackEvent("apk-manager.upload.click");
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -364,7 +371,10 @@ export default function ApkManager() {
                 <Button 
                   size="sm" 
                   variant="outline"
-                  onClick={() => deleteApkMutation.mutate(apk.id)}
+                  onClick={() => {
+                    trackEvent && trackEvent("apk-manager.delete.click");
+                    deleteApkMutation.mutate(apk.id);
+                  }}
                   disabled={deleteApkMutation.isPending}
                 >
                   <Trash2 className="w-3 h-3" />
@@ -391,6 +401,37 @@ export default function ApkManager() {
       )}
 
       {/* APK Details Dialog */}
+      {/* LLM APK Analysis Suggestion */}
+      {selectedApk && (
+        <div className="mb-4">
+          <Button
+            variant="outline"
+            className="text-xs"
+            disabled={llmLoading}
+            onClick={async () => {
+              setLlmLoading(true);
+              setLlmSuggestion("");
+              const resp = await callToolBridge({
+                tool: "llmComplete",
+                input: {
+                  provider: "openai",
+                  model: "gpt-4o",
+                  prompt: `Analyze this APK and summarize its purpose, risks, and permissions: ${selectedApk.originalName}, permissions: ${selectedApk.permissions.join(", ")}`
+                }
+              });
+              setLlmLoading(false);
+              if (resp && resp.data && resp.data.completion) setLlmSuggestion(resp.data.completion);
+              trackEvent && trackEvent("llm.apk_analysis_suggestion");
+            }}
+          >{llmLoading ? "LLM..." : "LLM Analyze APK"}</Button>
+          {llmSuggestion && (
+            <div className="mt-2 p-2 bg-surface-variant border rounded text-xs">
+              <div className="font-semibold mb-1">LLM Analysis:</div>
+              <div>{llmSuggestion}</div>
+            </div>
+          )}
+        </div>
+      )}
       <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>

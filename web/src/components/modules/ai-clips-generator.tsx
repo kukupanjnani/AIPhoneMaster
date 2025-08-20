@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { useEffect } from "react";
+import { callToolBridge } from "@/lib/callToolBridge";
+import { trackEvent } from "@/lib/analytics";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -79,6 +82,9 @@ interface ImageSettings {
 }
 
 export function AiClipsGenerator() {
+  const [llmLoading, setLlmLoading] = useState(false);
+  const [llmSuggestion, setLlmSuggestion] = useState("");
+  useEffect(() => { trackEvent && trackEvent("ai-clips-generator.viewed"); }, []);
   const [activeTab, setActiveTab] = useState("video");
   const [prompt, setPrompt] = useState("");
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
@@ -187,6 +193,7 @@ export function AiClipsGenerator() {
   });
 
   const handleGenerate = () => {
+  trackEvent && trackEvent("ai-clips-generator.generate.click");
     if (!prompt.trim()) {
       toast({
         title: "Prompt Required",
@@ -303,6 +310,32 @@ export function AiClipsGenerator() {
                   className="bg-dark border-surface-variant"
                   rows={3}
                 />
+                <Button
+                  variant="outline"
+                  className="text-xs mt-2"
+                  disabled={llmLoading}
+                  onClick={async () => {
+                    setLlmLoading(true);
+                    setLlmSuggestion("");
+                    const resp = await callToolBridge({
+                      tool: "llmComplete",
+                      input: {
+                        provider: "openai",
+                        model: "gpt-4o",
+                        prompt: `Suggest a creative prompt for an AI ${activeTab} generation.`
+                      }
+                    });
+                    setLlmLoading(false);
+                    if (resp && resp.data && resp.data.completion) setLlmSuggestion(resp.data.completion);
+                    trackEvent && trackEvent("llm.ai_clips_prompt_suggestion");
+                  }}
+                >{llmLoading ? "LLM..." : "LLM Suggest Prompt"}</Button>
+                {llmSuggestion && (
+                  <div className="mt-2 p-2 bg-surface-variant border rounded text-xs">
+                    <div className="font-semibold mb-1">LLM Suggestion:</div>
+                    <div>{llmSuggestion}</div>
+                  </div>
+                )}
                 
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <div>

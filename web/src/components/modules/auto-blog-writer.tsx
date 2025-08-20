@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { useEffect } from "react";
+import { callToolBridge } from "@/lib/callToolBridge";
+import { trackEvent } from "@/lib/analytics";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,6 +48,9 @@ interface BlogGenerationRequest {
 }
 
 export default function AutoBlogWriter() {
+  const [llmLoading, setLlmLoading] = useState(false);
+  const [llmSuggestion, setLlmSuggestion] = useState("");
+  useEffect(() => { trackEvent && trackEvent("auto-blog-writer.viewed"); }, []);
   const [activeTab, setActiveTab] = useState("generator");
   const [generatedBlogs, setGeneratedBlogs] = useState<BlogPost[]>([]);
   const [selectedBlog, setSelectedBlog] = useState<BlogPost | null>(null);
@@ -139,6 +145,7 @@ export default function AutoBlogWriter() {
   };
 
   const handleGenerate = () => {
+  trackEvent && trackEvent("auto-blog-writer.generate.click");
     if (!generationRequest.primaryKeyword.trim()) {
       toast({
         title: "Missing Primary Keyword",
@@ -152,6 +159,7 @@ export default function AutoBlogWriter() {
   };
 
   const handleBulkGenerate = () => {
+  trackEvent && trackEvent("auto-blog-writer.bulk_generate.click");
     const keywords = bulkKeywords.split('\n').filter(k => k.trim()).map(k => k.trim());
     
     if (keywords.length === 0) {
@@ -280,6 +288,33 @@ export default function AutoBlogWriter() {
                       placeholder="e.g., digital marketing"
                       value={generationRequest.primaryKeyword}
                       onChange={(e) => setGenerationRequest(prev => ({ ...prev, primaryKeyword: e.target.value }))}
+                    />
+                    <Button
+                      variant="outline"
+                      className="text-xs mt-2"
+                      disabled={llmLoading}
+                      onClick={async () => {
+                        setLlmLoading(true);
+                        setLlmSuggestion("");
+                        const resp = await callToolBridge({
+                          tool: "llmComplete",
+                          input: {
+                            provider: "openai",
+                            model: "gpt-4o",
+                            prompt: `Suggest a trending blog topic and keywords for my niche.`
+                          }
+                        });
+                        setLlmLoading(false);
+                        if (resp && resp.data && resp.data.completion) setLlmSuggestion(resp.data.completion);
+                        trackEvent && trackEvent("llm.blog_topic_suggestion");
+                      }}
+                    >{llmLoading ? "LLM..." : "LLM Suggest Topic"}</Button>
+                    {llmSuggestion && (
+                      <div className="mt-2 p-2 bg-surface-variant border rounded text-xs">
+                        <div className="font-semibold mb-1">LLM Suggestion:</div>
+                        <div>{llmSuggestion}</div>
+                      </div>
+                    )}
                     />
                   </div>
 

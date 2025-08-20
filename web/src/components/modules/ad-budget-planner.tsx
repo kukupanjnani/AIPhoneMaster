@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { useEffect } from "react";
+import { callToolBridge } from "@/lib/callToolBridge";
+import { trackEvent } from "@/lib/analytics";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +14,10 @@ import ScrollableCard from "@/components/ui/scrollable-card";
 export function AdBudgetPlanner() {
   const [budget, setBudget] = useState("0");
   const [platform, setPlatform] = useState("organic");
+  const [llmLoading, setLlmLoading] = useState(false);
+  const [llmSuggestion, setLlmSuggestion] = useState("");
+
+  useEffect(() => { trackEvent && trackEvent("ad-budget-planner.viewed"); }, []);
 
   const budgetPlans = [
     { 
@@ -94,6 +101,26 @@ export function AdBudgetPlanner() {
                 onChange={(e) => setBudget(e.target.value)}
                 className="bg-dark border-surface-variant"
               />
+              <Button
+                variant="outline"
+                className="text-xs"
+                disabled={llmLoading}
+                onClick={async () => {
+                  setLlmLoading(true);
+                  setLlmSuggestion("");
+                  const resp = await callToolBridge({
+                    tool: "llmComplete",
+                    input: {
+                      provider: "openai",
+                      model: "gpt-4o",
+                      prompt: `Suggest an optimal ad budget and strategy for: Budget ₹${budget}, Platform: ${platform}`
+                    }
+                  });
+                  setLlmLoading(false);
+                  if (resp && resp.data && resp.data.completion) setLlmSuggestion(resp.data.completion);
+                  trackEvent && trackEvent("llm.ad_budget_suggestion");
+                }}
+              >{llmLoading ? "LLM..." : "LLM Suggest"}</Button>
               <Select value={platform} onValueChange={setPlatform}>
                 <SelectTrigger className="bg-dark border-surface-variant">
                   <SelectValue />
@@ -108,6 +135,12 @@ export function AdBudgetPlanner() {
             </div>
             
             <div className="space-y-2">
+            {llmSuggestion && (
+              <div className="mt-2 p-2 bg-surface-variant border rounded text-xs">
+                <div className="font-semibold mb-1">LLM Suggestion:</div>
+                <div>{llmSuggestion}</div>
+              </div>
+            )}
               {budgetPlans.map((plan, index) => (
                 <div
                   key={index}
@@ -143,6 +176,13 @@ export function AdBudgetPlanner() {
             <Button className="w-full bg-green-500 hover:bg-green-600">
               <Target className="w-4 h-4 mr-2" />
               Activate Budget Plan
+            </Button>
+            <Button
+              className="w-full bg-blue-500 hover:bg-blue-600 mt-2"
+              onClick={() => trackEvent && trackEvent("ad-budget-planner.analytics.click")}
+            >
+              <BarChart3 className="w-4 h-4 mr-2" />
+              View Analytics
             </Button>
           </TabsContent>
           
